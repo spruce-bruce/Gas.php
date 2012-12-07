@@ -64,8 +64,42 @@ class gas{
 	 * @return [type]
 	 */
 	protected function tag(){
-		$tag = print_r($this->push, true);
+		$tag = Gas_Strings::tag($this->script);
+		$push_string = '';
+
+		foreach($this->push as $method=>$options){
+			if(in_array($method, $this->multi_methods)){
+				//there might be multiple calls of this method
+				foreach($options as $custom=>$opts){
+					$multi_method = (is_numeric($custom)) ? ($method) : ($custom . "." . $method);
+					$push_string .= "\n";
+					$push_string .= $this->build_push($multi_method, $opts);
+				}
+			}else{
+				$push_string .= "\n";
+				$push_string .= $this->build_push($method, $options);
+			}
+		}
+
+		$tag = str_replace("[PUSH]", $push_string, $tag);
+
 		return $tag;
+	}
+
+	/**
+	 * Build the javascript push method call
+	 * @param  string $method 
+	 * @param  mixed $opts   option or array of options
+	 * @return  string         
+	 */
+	private function build_push($method, $opts){
+		if(is_array($opts)){
+			$opts = "{'" . implode("','", $opts) . "'}";
+		}else{
+			$opts = "'" . $opts . "'";
+		}
+
+		return Gas_Strings::push($method, $opts);
 	}
 
 	/**
@@ -120,11 +154,17 @@ class gas{
 	 * @return boolean
 	 */
 	protected function multi_method($method, $opts = false){
+		$parts = explode('.', $method);
 		$multi_detected = false;
 
-		if(in_array($method, $this->multi_methods)){
+		$search = (count($parts) == 2) ? ($parts[1]) : ($method);
+		if(in_array($search, $this->multi_methods)){
 			$multi_detected = true;
-			$this->push[$method][] = $opts;
+			if(count($parts) != 2){
+				$this->push[$method][] = $opts;
+			}else{
+				$this->push[$parts[1]][$parts[0]] = $opts;
+			}
 		}
 
 		return $multi_detected;
@@ -228,5 +268,70 @@ class gas{
 
 		return $domain;
 	}
+
+	/**
+	 * return a default set script tag that gives you a shortcut to a good set of
+	 * gas functionality quickly. This is the quickest way to us Gas.php
+	 * 
+	 * @param  string $ua      ua number
+	 * @param  string $domain  domain we're tracking on
+	 * @return string          gas tag
+	 */
+	public static function defaults($ua, $domain){
+		$gas = new Gas();
+
+		//reset the push array
+		$gas->push = array(
+			'_setAccount' => array(),
+			'_setDomainName' => array(),
+		);
+
+		$gas->ua($ua);
+		$gas->domain($domain);
+		
+		//tracking some defaults
+		$gas->push('_trackPageview');
+		$gas->push('_gasTrackForms');
+		$gas->push('_gasTrackOutboundLinks');
+		$gas->push('_gasTrackMaxScroll');
+		$gas->push('_gasTrackDownloads');
+		$gas->push('_gasTrackYoutube', array('force' => true));
+		$gas->push("_gasTrackVimeo", array('force' => true));
+		$gas->push("_gasTrackMailto");
+
+		return $gas->tag();
+	}
 }
+
+class Gas_Strings{
+	public static function tag($script){
+return <<< EOT
+<script type="text/javascript">
+var _gas = _gas || [];
+[PUSH]
+
+(function() {
+var ga = document.createElement('script');
+ga.type = 'text/javascript';
+ga.async = true;
+ga.src = '$script';
+var s = document.getElementsByTagName('script')[0];
+s.parentNode.insertBefore(ga, s);
+})();
+</script> 
+EOT;
+	}
+
+	public static function push($method, $options){
+return <<< EOT
+_gas.push(['$method', $options);
+EOT;
+	}
+}
+
+
+
+
+
+
 ?>
